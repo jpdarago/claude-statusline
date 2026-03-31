@@ -36,13 +36,16 @@ type Input struct {
 	} `json:"rate_limits"`
 }
 
-func main() {
-	var input Input
-	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
-		fmt.Print("statusline: parse error")
-		return
+func gitBranch(cwd string) string {
+	cmd := exec.Command("git", "-C", cwd, "symbolic-ref", "--short", "HEAD")
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	if out, err := cmd.Output(); err == nil {
+		return strings.TrimSpace(string(out))
 	}
+	return ""
+}
 
+func formatStatusline(input Input, branchFn func(string) string) string {
 	var parts []string
 
 	// Model
@@ -56,13 +59,8 @@ func main() {
 		cwd = input.CWD
 	}
 	if cwd != "" {
-		cmd := exec.Command("git", "-C", cwd, "symbolic-ref", "--short", "HEAD")
-		cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
-		if out, err := cmd.Output(); err == nil {
-			branch := strings.TrimSpace(string(out))
-			if branch != "" {
-				parts = append(parts, branch)
-			}
+		if branch := branchFn(cwd); branch != "" {
+			parts = append(parts, branch)
 		}
 	}
 
@@ -90,5 +88,14 @@ func main() {
 		parts = append(parts, limitStr)
 	}
 
-	fmt.Print(strings.Join(parts, " | "))
+	return strings.Join(parts, " | ")
+}
+
+func main() {
+	var input Input
+	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
+		fmt.Print("statusline: parse error")
+		return
+	}
+	fmt.Print(formatStatusline(input, gitBranch))
 }
