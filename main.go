@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -27,7 +28,13 @@ type Input struct {
 	Workspace struct {
 		CurrentDir string `json:"current_dir"`
 	} `json:"workspace"`
-	CWD        string `json:"cwd"`
+	CWD     string `json:"cwd"`
+	Version string `json:"version"`
+	Cost    struct {
+		TotalCostUSD      float64 `json:"total_cost_usd"`
+		TotalLinesAdded   int     `json:"total_lines_added"`
+		TotalLinesRemoved int     `json:"total_lines_removed"`
+	} `json:"cost"`
 	RateLimits struct {
 		FiveHour struct {
 			UsedPercentage float64 `json:"used_percentage"`
@@ -36,16 +43,57 @@ type Input struct {
 	} `json:"rate_limits"`
 }
 
-func gitBranch(cwd string) string {
-	cmd := exec.Command("git", "-C", cwd, "symbolic-ref", "--short", "HEAD")
-	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
-	if out, err := cmd.Output(); err == nil {
-		return strings.TrimSpace(string(out))
-	}
-	return ""
+// GitInfo summarizes the repository state shown in the statusline.
+type GitInfo struct {
+	Branch string
+	Dirty  bool
+	Ahead  int
+	Behind int
 }
 
-func formatStatusline(input Input, branchFn func(string) string) string {
+// parseGitStatus extracts branch, dirty state, and ahead/behind counts from
+// the output of `git status --porcelain=v2 --branch`.
+func parseGitStatus(out string) GitInfo {
+	var info GitInfo
+	for line := range strings.SplitSeq(out, "\n") {
+		if line == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "#") {
+			// Any non-header line is a changed/untracked entry.
+			info.Dirty = true
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		switch fields[1] {
+		case "branch.head":
+			if fields[2] != "(detached)" {
+				info.Branch = fields[2]
+			}
+		case "branch.ab":
+			if len(fields) >= 4 {
+				info.Ahead, _ = strconv.Atoi(strings.TrimPrefix(fields[2], "+"))
+				info.Behind, _ = strconv.Atoi(strings.TrimPrefix(fields[3], "-"))
+			}
+		}
+	}
+	return info
+}
+
+func gitInfo(cwd string) GitInfo {
+	cmd := exec.Command("git", "-C", cwd, "status", "--porcelain=v2", "--branch")
+	cmd.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	out, err := cmd.Output()
+	if err != nil {
+		return GitInfo{}
+	}
+	return parseGitStatus(string(out))
+}
+
+func formatStatusline(input Input, gitFn func(string) GitInfo) string {
 	var parts []string
 
 	// Model
@@ -53,14 +101,24 @@ func formatStatusline(input Input, branchFn func(string) string) string {
 		parts = append(parts, input.Model.DisplayName)
 	}
 
-	// Git branch
+	// Git branch + dirty/ahead/behind indicators
 	cwd := input.Workspace.CurrentDir
 	if cwd == "" {
 		cwd = input.CWD
 	}
 	if cwd != "" {
-		if branch := branchFn(cwd); branch != "" {
-			parts = append(parts, branch)
+		if git := gitFn(cwd); git.Branch != "" {
+			seg := git.Branch
+			if git.Dirty {
+				seg += "*"
+			}
+			if git.Ahead > 0 {
+				seg += fmt.Sprintf(" ↑%d", git.Ahead)
+			}
+			if git.Behind > 0 {
+				seg += fmt.Sprintf(" ↓%d", git.Behind)
+			}
+			parts = append(parts, seg)
 		}
 	}
 
@@ -88,6 +146,21 @@ func formatStatusline(input Input, branchFn func(string) string) string {
 		parts = append(parts, limitStr)
 	}
 
+	// Session cost
+	if input.Cost.TotalCostUSD > 0 {
+		parts = append(parts, fmt.Sprintf("$%.2f", input.Cost.TotalCostUSD))
+	}
+
+	// Lines changed this session
+	if input.Cost.TotalLinesAdded > 0 || input.Cost.TotalLinesRemoved > 0 {
+		parts = append(parts, fmt.Sprintf("+%d -%d", input.Cost.TotalLinesAdded, input.Cost.TotalLinesRemoved))
+	}
+
+	// Claude Code version
+	if input.Version != "" {
+		parts = append(parts, "v"+input.Version)
+	}
+
 	return strings.Join(parts, " | ")
 }
 
@@ -97,5 +170,5 @@ func main() {
 		fmt.Print("statusline: parse error")
 		return
 	}
-	fmt.Print(formatStatusline(input, gitBranch))
+	fmt.Print(formatStatusline(input, gitInfo))
 }

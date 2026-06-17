@@ -5,16 +5,20 @@ A fast, minimal statusline generator for [Claude Code](https://docs.anthropic.co
 ## Example output
 
 ```
-Opus 4.6 | main | ctx:75% (150000 left) | limit:90% left (resets 14:32)
+Opus 4.6 | main* ↑2 ↓1 | ctx:75% (150000 left) | limit:90% left (resets 14:32) | $0.42 | +120 -30 | v1.0.30
 ```
 
 The statusline shows (when available):
 
 - **Model name** — the active Claude model
-- **Git branch** — current branch in the working directory
+- **Git branch** — current branch in the working directory, with a `*` when the
+  tree is dirty and `↑N`/`↓N` for commits ahead of/behind the upstream
 - **Worktree** — active git worktree name (`wt:<name>`)
 - **Context window** — remaining percentage and token count
 - **Rate limit** — remaining 5-hour quota and reset time
+- **Session cost** — total USD spent this session (`$0.42`)
+- **Lines changed** — lines added/removed this session (`+120 -30`)
+- **Version** — the running Claude Code version (`v1.0.30`)
 
 ## Installation
 
@@ -26,6 +30,31 @@ Or build from source:
 
 ```bash
 go build -o claude-statusline .
+```
+
+### Nix
+
+This repository is a flake. Run it directly:
+
+```bash
+nix run github:jpdarago/claude-statusline
+```
+
+Install it into your profile:
+
+```bash
+nix profile install github:jpdarago/claude-statusline
+```
+
+Or reference it from your own flake to add the package to your system or
+home-manager configuration:
+
+```nix
+{
+  inputs.claude-statusline.url = "github:jpdarago/claude-statusline";
+  # ... then add inputs.claude-statusline.packages.${system}.default
+  # to environment.systemPackages or home.packages.
+}
 ```
 
 ## Configuration
