@@ -32,6 +32,16 @@ Or build from source:
 go build -o claude-statusline .
 ```
 
+### Homebrew
+
+```bash
+brew tap jpdarago/claude-statusline https://github.com/jpdarago/claude-statusline
+brew install claude-statusline
+```
+
+The formula lives in this repository's `Formula/` directory, so the tap URL
+points straight at it.
+
 ### Nix
 
 This repository is a flake. Run it directly:
