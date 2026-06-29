@@ -164,7 +164,22 @@ func formatStatusline(input Input, gitFn func(string) GitInfo) string {
 	return strings.Join(parts, " | ")
 }
 
+// Build metadata, injected at release time via -ldflags by GoReleaser.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "--version", "-version", "-v":
+			fmt.Printf("claude-statusline %s (commit %s, built %s)\n", version, commit, date)
+			return
+		}
+	}
+
 	var input Input
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
 		fmt.Print("statusline: parse error")

@@ -1,0 +1,71 @@
+# GoReleaser configuration for claude-statusline.
+# Docs: https://goreleaser.com
+version: 2
+
+project_name: claude-statusline
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: claude-statusline
+    binary: claude-statusline
+    main: .
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+
+archives:
+  - id: claude-statusline
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+brews:
+  - name: claude-statusline
+    repository:
+      owner: jpdarago
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/jpdarago/claude-statusline"
+    description: "Fast, minimal statusline generator for Claude Code"
+    license: "MIT"
+    commit_author:
+      name: goreleaserbot
+      email: goreleaserbot@users.noreply.github.com
+    test: |
+      assert_match "Opus 4.6",
+        pipe_output("#{bin}/claude-statusline", '{"model":{"display_name":"Opus 4.6"}}')
+
+release:
+  draft: false
+  prerelease: auto
